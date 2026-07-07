@@ -413,6 +413,8 @@ async function webSearchFor(dept, vars) {
       if (r.content) block += `\n   [페이지 본문 발췌] ${r.content}`;
       block += "\n";
     });
+    // 로컬 엔진의 컨텍스트 한도를 넘지 않도록 검색 블록 길이 제한
+    if (block.length > 4500) block = block.slice(0, 4500) + "\n…(검색 자료 일부 생략)";
     return { query: q, block };
   } catch (e) {
     return null; // 검색 실패 시 검색 없이 진행
@@ -540,7 +542,11 @@ async function runPipeline() {
       $("#runStatus").textContent = `편집국이 설교문을 작성 중…`;
       state.results[synth.id] = { status: "running" };
       renderNodes();
-      const reports = memory.map((m) => `### [${m.name}] 보고서\n${m.text}`).join("\n\n---\n\n");
+      // 부서 보고서가 너무 길면 편집국 요청이 로컬 엔진의 컨텍스트 한도를 넘으므로 부서당 길이 제한
+      const reports = memory.map((m) => {
+        const t = m.text.length > 2400 ? m.text.slice(0, 2400) + "\n…(보고서 일부 생략)" : m.text;
+        return `### [${m.name}] 보고서\n${t}`;
+      }).join("\n\n---\n\n");
       const t0 = performance.now();
       const text = await callDept(synth, { ...vars, reports });
       state.results[synth.id] = { status: "done", text, ms: performance.now() - t0, model: synth.model || state.settings.defaultModel };

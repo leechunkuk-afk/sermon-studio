@@ -212,6 +212,15 @@ Python이 없으면 설치 안내 페이지가 자동으로 열립니다 — 설
 <li>LM Studio는 Developer 탭에 <b>Status: Running</b>이 보여야 합니다.</li>
 <li>켠 다음 <b>⟳</b> 버튼을 다시 누르세요.</li>
 </ol></details>
+<details><summary>오류: "context length" / "tokens ... greater than the context length"</summary>
+<p>AI 엔진이 한 번에 읽을 수 있는 글 길이(컨텍스트)보다 긴 요청이 들어갔다는 뜻입니다.
+주로 <b>LM Studio가 모델을 작은 컨텍스트(2048~4096)로 로드</b>했을 때 웹 검색 자료가 붙으면 발생합니다.</p>
+<ol>
+<li>LM Studio 앱 → 왼쪽 <b>내 모델(My Models)</b> 탭 → 사용 중인 모델 옆 <b>⚙️ 설정</b></li>
+<li><b>Context Length</b>를 <code>16384</code>로 변경 (기본값으로 저장하면 다음에도 유지됩니다)</li>
+<li>Developer 탭에서 모델을 <b>Eject 후 다시 로드</b> (또는 서버 재시작)</li>
+</ol>
+<p>메모리 8GB 컴퓨터에서는 16384가 적당합니다. 그 이상 올리면 메모리가 부족해질 수 있습니다.</p></details>
 <details><summary>부서가 빨간색(오류)이 돼요</summary>
 <p>노드를 클릭하면 오류 내용이 보입니다. 대부분 ① 엔진이 꺼짐 ② 모델 미선택 ③ API 키 오류입니다.
 한 부서가 실패해도 나머지는 계속 진행됩니다.</p></details>
