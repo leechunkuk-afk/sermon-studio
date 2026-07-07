@@ -314,8 +314,16 @@ def mlx_control(action, model_path=None):
             stdout=log, stderr=log)
         with open(MLX_PATH_FILE, "w") as f:
             f.write(real)
-        return {"started": True, "port": 10240,
-                "note": "모델 로딩에 수십 초 걸릴 수 있습니다. 엔진을 'MLX'로 바꾸고 ⟳를 누르세요."}
+        note = "모델 로딩에 수십 초 걸릴 수 있습니다. 엔진을 'MLX'로 바꾸고 ⟳를 누르세요."
+        # LM Studio에도 모델이 올라가 있으면 메모리 부족(엔진 강제종료) 위험 경고
+        try:
+            lm = http_json("http://localhost:1234/v1/models", timeout=2)
+            if lm.get("data"):
+                note += (" ⚠ LM Studio에도 모델이 로드되어 있습니다 — 메모리가 부족하면 엔진이"
+                         " 강제 종료될 수 있으니, MLX를 쓸 때는 LM Studio 모델을 내려두세요(Eject).")
+        except Exception:
+            pass
+        return {"started": True, "port": 10240, "note": note}
 
     return {"error": "알 수 없는 action"}
 
