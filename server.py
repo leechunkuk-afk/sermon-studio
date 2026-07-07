@@ -44,6 +44,7 @@ LLM_TIMEOUT = 600  # 로컬 모델은 생성이 오래 걸릴 수 있음
 DOWNLOADS = {}
 DOWNLOADS_LOCK = threading.Lock()
 MLX_PROC = None  # 실행 중인 MLX 서버 프로세스
+MLX_PATH_FILE = os.path.join(MODELS_DIR, ".mlx-current")  # 서버 재시작 후에도 현재 모델 기억
 
 
 def http_json(url, payload=None, headers=None, timeout=LLM_TIMEOUT, method=None):
@@ -291,15 +292,22 @@ def mlx_control(action, model_path=None):
         if importlib.util.find_spec("mlx_lm") is None:
             return {"error": "mlx-lm이 설치되어 있지 않습니다. 폴더의 `MLX 모델서버 시작.command`를 "
                              "실행하면 설치를 안내합니다."}
+        import unicodedata
+        norm = lambda p: unicodedata.normalize("NFC", os.path.realpath(p))
         real = os.path.realpath(model_path or "")
-        if not real.startswith(os.path.realpath(MODELS_DIR)) or not os.path.isdir(real):
+        if not norm(real).startswith(norm(MODELS_DIR)) or not os.path.isdir(real):
             return {"error": "models/ 폴더 안의 모델만 실행할 수 있습니다"}
         if MLX_PROC and MLX_PROC.poll() is None:
             MLX_PROC.terminate()
+        # 이전 실행에서 남은 MLX 서버가 포트를 점유 중이면 정리
+        subprocess.run(["/bin/sh", "-c", "lsof -ti :10240 | xargs kill 2>/dev/null"],
+                       capture_output=True)
         log = open(os.path.join(MODELS_DIR, "mlx-server.log"), "w")
         MLX_PROC = subprocess.Popen(
             [sys.executable, "-m", "mlx_lm.server", "--model", real, "--port", "10240"],
             stdout=log, stderr=log)
+        with open(MLX_PATH_FILE, "w") as f:
+            f.write(real)
         return {"started": True, "port": 10240,
                 "note": "모델 로딩에 수십 초 걸릴 수 있습니다. 엔진을 'MLX'로 바꾸고 ⟳를 누르세요."}
 
@@ -682,6 +690,11 @@ class Handler(SimpleHTTPRequestHandler):
                             headers["Authorization"] = "Bearer " + data["apiKey"]
                         out = http_json(base + "/models", headers=headers, timeout=8)
                         names = [m.get("id") for m in out.get("data", [])]
+                        # mlx_lm 서버는 목록을 비워 반환 — 우리가 띄운 모델 경로로 보완
+                        if not names and ":10240" in base and os.path.exists(MLX_PATH_FILE):
+                            p = open(MLX_PATH_FILE).read().strip()
+                            if p and os.path.isdir(p):
+                                names = [p]
                     self._send(200, {"models": [n for n in names if n]})
                 except Exception as e:
                     self._send(200, {"models": [], "error": str(e)})

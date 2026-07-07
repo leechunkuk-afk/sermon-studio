@@ -456,7 +456,11 @@ ${web.block}
   });
   const out = await res.json();
   if (out.error) throw new Error(out.error);
-  return out.text || "";
+  // 추론(reasoning) 모델의 <think> 블록과 특수 토큰 제거
+  return (out.text || "")
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .replace(/<\|im_end\|>|<\|endoftext\|>|<\|eot_id\|>/g, "")
+    .trim();
 }
 
 // ─────────── 파이프라인 실행 ───────────
