@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>설교 스튜디오 — Sermon Studio</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ═══════════ 왼쪽 사이드바 (Open WebUI 스타일) ═══════════ -->
+  <aside id="sidebar">
+    <div class="logo">
+      <span class="logo-icon">⛪</span>
+      <div>
+        <h1>설교 스튜디오</h1>
+        <p>AI 부서 협업 설교문 작성</p>
+      </div>
+    </div>
+
+    <section class="side-section">
+      <label class="field-label">설교 주제</label>
+      <textarea id="topic" rows="3" placeholder="예: 광야에서 만나는 하나님의 은혜"></textarea>
+
+      <label class="field-label">본문 말씀 (선택)</label>
+      <input id="scripture" type="text" placeholder="예: 출애굽기 16:1-15">
+
+      <label class="field-label">추가 지시사항 (선택)</label>
+      <textarea id="extra" rows="2" placeholder="예: 청년부 대상, 30분 분량, 강해설교 형식"></textarea>
+
+      <label class="field-label">실행 옵션</label>
+      <select id="runMode">
+        <option value="seq">순차 실행 — 부서별 차례로</option>
+        <option value="par">병렬 실행 — 전 부서 동시 (API 권장)</option>
+      </select>
+      <label class="check-row compact"><input id="webSearchOn" type="checkbox" checked> 🔍 웹 검색 연동 (DuckDuckGo)</label>
+      <label class="check-row compact"><input id="deepFetch" type="checkbox" checked> 상위 결과 본문까지 수집 (정확↑ 속도↓)</label>
+
+      <button id="runBtn" class="run-btn">▶ 전체 부서 가동</button>
+      <button id="stopBtn" class="stop-btn" style="display:none">■ 중단</button>
+      <div id="runStatus" class="run-status"></div>
+    </section>
+
+    <section class="side-section">
+      <div class="section-head">
+        <label class="field-label">⚙️ LLM 엔진 설정</label>
+      </div>
+      <label class="field-label sub">백엔드 엔진</label>
+      <select id="provider">
+        <optgroup label="🖥️ 로컬 엔진">
+          <option value="ollama">Ollama (GGUF)</option>
+          <option value="lmstudio">LM Studio (safetensors·MLX·GGUF)</option>
+          <option value="mlx">MLX — mlx-lm (safetensors)</option>
+          <option value="llamacpp">llama.cpp 서버 (GGUF)</option>
+          <option value="vllm">vLLM (safetensors)</option>
+          <option value="textgen">Text Generation WebUI</option>
+          <option value="koboldcpp">KoboldCpp</option>
+        </optgroup>
+        <optgroup label="☁️ 클라우드 API">
+          <option value="anthropic">Anthropic (Claude)</option>
+          <option value="openai">OpenAI (GPT)</option>
+          <option value="gemini">Google Gemini</option>
+          <option value="groq">Groq (무료 티어)</option>
+          <option value="openrouter">OpenRouter (수백 개 모델)</option>
+        </optgroup>
+        <optgroup label="🔧 기타">
+          <option value="custom">OpenAI 호환 (직접 입력)</option>
+          <option value="demo">데모 모드 (테스트용)</option>
+        </optgroup>
+      </select>
+      <label class="field-label sub">서버 주소</label>
+      <input id="baseUrl" type="text" placeholder="http://localhost:11434">
+      <label class="field-label sub">API 키 (외부 API용)</label>
+      <input id="apiKey" type="password" placeholder="필요 시 입력">
+      <label class="field-label sub">기본 모델</label>
+      <div class="model-row">
+        <select id="defaultModel"></select>
+        <button id="refreshModels" title="Ollama 모델 목록 새로고침">⟳</button>
+      </div>
+      <div id="engineStatus" class="engine-status"></div>
+    </section>
+
+    <section class="side-section">
+      <div class="section-head">
+        <label class="field-label">📦 모델 보관함</label>
+        <button id="localRefresh" class="mini-btn" title="보관 모델 새로고침">⟳</button>
+      </div>
+      <div class="model-row">
+        <input id="hubQuery" type="text" placeholder="HuggingFace 검색 (예: qwen 4bit)">
+        <button id="hubSearchBtn" title="모델 검색">🔎</button>
+      </div>
+      <div id="hubResults" class="hub-list"></div>
+      <label class="field-label sub">보관 중인 모델 (models/ 폴더)</label>
+      <div id="localModels" class="hub-list"></div>
+      <div id="mlxStatus" class="engine-status"></div>
+    </section>
+
+    <section class="side-section">
+      <div class="section-head">
+        <label class="field-label">📁 작업 기록</label>
+        <button id="clearHistory" class="mini-btn" title="기록 전체 삭제">비우기</button>
+      </div>
+      <div id="history" class="history"></div>
+    </section>
+
+    <footer class="side-footer">로컬에서 실행 중 · 데이터는 이 컴퓨터에만 저장됩니다</footer>
+  </aside>
+
+  <!-- ═══════════ 중앙 노드 캔버스 (ComfyUI 스타일) ═══════════ -->
+  <main id="canvas-wrap">
+    <div class="canvas-toolbar">
+      <span class="toolbar-title">🏢 부서 파이프라인</span>
+      <span class="toolbar-hint">노드를 드래그해 배치 · 클릭하면 보고서 확인 · ✎로 프롬프트 수정</span>
+      <select id="themeSel" class="theme-sel" title="화면 테마">
+        <option value="dark">🌙 다크</option>
+        <option value="light">☀️ 라이트</option>
+        <option value="sepia">📜 양피지</option>
+        <option value="midnight">🌊 딥블루</option>
+      </select>
+      <button id="addDept" class="mini-btn">＋ 부서 추가</button>
+      <button id="resetLayout" class="mini-btn">배치 초기화</button>
+      <a href="help.html" target="_blank" class="mini-btn">❓ 사용설명서</a>
+    </div>
+    <div id="canvas">
+      <svg id="wires"></svg>
+      <!-- 노드들이 JS로 렌더링됩니다 -->
+    </div>
+  </main>
+
+  <!-- ═══════════ 오른쪽 결과 패널 ═══════════ -->
+  <aside id="result-panel">
+    <div class="tabs">
+      <button class="tab active" data-tab="final">📜 최종 설교문</button>
+      <button class="tab" data-tab="report">📋 부서 보고서</button>
+    </div>
+    <div class="panel-actions">
+      <button id="copyBtn" class="mini-btn">복사</button>
+      <button id="downloadBtn" class="mini-btn">.md</button>
+      <button id="downloadDocxBtn" class="mini-btn">.docx</button>
+      <button id="downloadPptxBtn" class="mini-btn">.pptx</button>
+      <button id="saveBtn" class="mini-btn">서버에 저장</button>
+    </div>
+    <div id="panel-content" class="panel-content">
+      <div class="empty-state">
+        <div class="empty-icon">📖</div>
+        <p>주제를 입력하고 <b>전체 부서 가동</b>을 누르면<br>각 부서가 자료를 조사하고<br>편집국이 설교문 초안을 작성합니다.<br><br>처음이신가요? <a href="help.html" target="_blank" style="color:var(--accent-2)">❓ 사용설명서 보기</a></p>
+      </div>
+    </div>
+  </aside>
+
+</div>
+
+<!-- 부서 편집 모달 -->
+<div id="modal-backdrop" class="hidden">
+  <div id="dept-modal">
+    <h2 id="modal-title">부서 편집</h2>
+    <label class="field-label">부서 이름</label>
+    <div class="model-row">
+      <input id="m-icon" type="text" style="width:56px;text-align:center" maxlength="4">
+      <input id="m-name" type="text" style="flex:1">
+    </div>
+    <label class="field-label">역할 프롬프트 <span class="hint">({topic}=주제, {scripture}=본문, {extra}=지시사항, {reports}=부서 보고서 — 편집국용)</span></label>
+    <textarea id="m-prompt" rows="9"></textarea>
+    <label class="field-label">전용 모델 <span class="hint">(연결된 엔진의 모델 중 선택 — 부서마다 다른 모델 사용 가능)</span></label>
+    <select id="m-model"></select>
+    <div id="m-search-row">
+      <label class="check-row"><input id="m-websearch" type="checkbox"> 🔍 이 부서 웹 검색 사용</label>
+      <label class="field-label">검색어 템플릿 <span class="hint">({topic}, {scripture} 치환)</span></label>
+      <input id="m-searchquery" type="text" placeholder="{topic}">
+    </div>
+    <label class="check-row"><input id="m-enabled" type="checkbox"> 이 부서 활성화</label>
+    <div class="modal-actions">
+      <button id="m-delete" class="danger-btn">부서 삭제</button>
+      <span style="flex:1"></span>
+      <button id="m-cancel" class="mini-btn">취소</button>
+      <button id="m-save" class="run-btn small">저장</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
