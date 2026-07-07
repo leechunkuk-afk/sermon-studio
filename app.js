@@ -461,7 +461,7 @@ ${web.block}
   // 추론(reasoning) 모델의 <think> 블록과 특수 토큰 제거
   return (out.text || "")
     .replace(/<think>[\s\S]*?<\/think>/g, "")
-    .replace(/<\|im_end\|>|<\|endoftext\|>|<\|eot_id\|>/g, "")
+    .replace(/<\|im_end\|>|<\|endoftext\|>|<\|eot_id\|>|\[\|endofturn\|\]/g, "")
     .trim();
 }
 

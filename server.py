@@ -83,6 +83,12 @@ def call_llm(cfg):
         # (Gemini의 OpenAI 호환 주소는 .../v1beta/openai 로 끝남)
         if not (base.endswith("/v1") or base.endswith("/openai")):
             base += "/v1"
+        # MLX 서버로 가는 짧은 모델 이름("org/repo")은 models/ 폴더의 실제 경로로 변환
+        # (경로가 아니면 mlx 서버가 HuggingFace에서 새로 받으려다 실패함)
+        if ":10240" in base and model and not model.startswith("/"):
+            local_path = os.path.join(MODELS_DIR, model)
+            if os.path.isdir(local_path):
+                model = local_path
         headers = {}
         if cfg.get("apiKey"):
             headers["Authorization"] = "Bearer " + cfg["apiKey"]
@@ -690,11 +696,20 @@ class Handler(SimpleHTTPRequestHandler):
                             headers["Authorization"] = "Bearer " + data["apiKey"]
                         out = http_json(base + "/models", headers=headers, timeout=8)
                         names = [m.get("id") for m in out.get("data", [])]
-                        # mlx_lm 서버는 목록을 비워 반환 — 우리가 띄운 모델 경로로 보완
-                        if not names and ":10240" in base and os.path.exists(MLX_PATH_FILE):
-                            p = open(MLX_PATH_FILE).read().strip()
-                            if p and os.path.isdir(p):
-                                names = [p]
+                        # mlx_lm 서버는 목록을 비워 반환 → models/ 폴더의 보관 모델 전체를 제공.
+                        # (mlx 서버는 요청의 model 값이 바뀌면 그 모델을 즉석에서 로드함)
+                        if ":10240" in base:
+                            local = [m["id"] for m in list_local_models() if m.get("hasSafetensors")]
+                            current = ""
+                            if os.path.exists(MLX_PATH_FILE):
+                                import unicodedata
+                                nfc = lambda s: unicodedata.normalize("NFC", s)
+                                p = nfc(open(MLX_PATH_FILE).read().strip())
+                                mdir = nfc(MODELS_DIR)
+                                current = os.path.relpath(p, mdir) if p.startswith(mdir) else p
+                            # 실행 중인 모델을 맨 앞으로
+                            merged = [n for n in [current] + local if n]
+                            names = list(dict.fromkeys(merged + names))
                     self._send(200, {"models": [n for n in names if n]})
                 except Exception as e:
                     self._send(200, {"models": [], "error": str(e)})
